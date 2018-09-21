@@ -13,17 +13,17 @@ namespace StripeGatewayFunction
     public static class StripeGatewayFunction
     {
         [FunctionName("StripeGateway")]
-        public async static Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)]HttpRequest req, ILogger log)
+        public async static Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "post", Route = null)]HttpRequest req, ILogger log)
         {
             log.LogInformation("C# HTTP trigger function processed a request.");
-            var json = await req.ReadAsStringAsync();
-            var stripeEvent = StripeEventUtility.ParseEvent(json);
+            
+            var stripeEvent = StripeEventUtility.ParseEvent(await req.ReadAsStringAsync());
 
             log.LogInformation($"Received stripe event of type: {stripeEvent.Type}");
 
-            if (stripeEvent.Type == "customer.created")
+            if (stripeEvent.Type == StripeEvents.CustomerCreated)
             {
-                var stripeCustomer = Mapper<StripeCustomer>.MapFromJson((string)stripeEvent.Data.Object.ToString());
+                var stripeCustomer = Mapper<StripeCustomer>.MapFromJson((String)stripeEvent.Data.Object.ToString());
 
                 var customer = new
                 {
@@ -57,7 +57,7 @@ namespace StripeGatewayFunction
                     log.LogInformation(await result.Content.ReadAsStringAsync());                    
                 }
             }
-            else if (stripeEvent.Type == "charge.succeeded")
+            else if (stripeEvent.Type == StripeEvents.ChargeSucceeded)
             {
                 // todo do something useful
             }
@@ -69,6 +69,7 @@ namespace StripeGatewayFunction
 
         public static HttpClient CreateFortnoxHttpClient()
         {
+            // todo move production to keyvault
             var client = new HttpClient();
             client.DefaultRequestHeaders.Add("Access-Token", Environment.GetEnvironmentVariable("fortnox:access_token"));
             client.DefaultRequestHeaders.Add("Client-Secret", Environment.GetEnvironmentVariable("fortnox:client_secret"));
