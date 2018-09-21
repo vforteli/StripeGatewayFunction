@@ -22,16 +22,23 @@ namespace StripeGatewayFunction
         [FunctionName("StripeGateway")]
         public async static Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "post", Route = null)]HttpRequest req, ILogger log)
         {
-            log.LogInformation("C# HTTP trigger function processed a request.");
-
             var stripeEvent = StripeEventUtility.ParseEvent(await req.ReadAsStringAsync());
+            log.LogInformation($"Received stripe event of type: {stripeEvent.Type}");
 
             var keyvault = new KeyVaultClient(new KeyVaultClient.AuthenticationCallback(new AzureServiceTokenProvider().KeyVaultTokenCallback));
-            _fortnoxAccessToken = (await keyvault.GetSecretAsync(VaultUrl, "fortnox-access-token-test")).Value;
-            _fortnoxClientSecret = (await keyvault.GetSecretAsync(VaultUrl, "fortnox-client-secret-test")).Value;
 
+            // todo this is maybe not always the case... but good enough for now
+            if (stripeEvent.LiveMode)
+            {
+                _fortnoxAccessToken = (await keyvault.GetSecretAsync(VaultUrl, "fortnox-access-token-prod")).Value;
+                _fortnoxClientSecret = (await keyvault.GetSecretAsync(VaultUrl, "fortnox-client-secret-prod")).Value;
+            }
+            else
+            {
+                _fortnoxAccessToken = (await keyvault.GetSecretAsync(VaultUrl, "fortnox-access-token-test")).Value;
+                _fortnoxClientSecret = (await keyvault.GetSecretAsync(VaultUrl, "fortnox-client-secret-test")).Value;
+            }
 
-            log.LogInformation($"Received stripe event of type: {stripeEvent.Type}");
 
             if (stripeEvent.Type == StripeEvents.CustomerCreated)
             {
@@ -84,7 +91,7 @@ namespace StripeGatewayFunction
         /// </summary>
         /// <returns></returns>
         public static HttpClient CreateFortnoxHttpClient()
-        {            
+        {
             var client = new HttpClient();
             client.DefaultRequestHeaders.Add("Access-Token", _fortnoxAccessToken);
             client.DefaultRequestHeaders.Add("Client-Secret", _fortnoxClientSecret);
