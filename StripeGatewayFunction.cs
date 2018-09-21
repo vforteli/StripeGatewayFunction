@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Azure.KeyVault;
+using Microsoft.Azure.Services.AppAuthentication;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Extensions.Logging;
@@ -12,12 +14,22 @@ namespace StripeGatewayFunction
 {
     public static class StripeGatewayFunction
     {
+        private const String VaultUrl = "https://flexinetsbilling.vault.azure.net/";
+        private static String _fortnoxAccessToken;
+        private static String _fortnoxClientSecret;
+
+
         [FunctionName("StripeGateway")]
         public async static Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "post", Route = null)]HttpRequest req, ILogger log)
         {
             log.LogInformation("C# HTTP trigger function processed a request.");
-            
+
             var stripeEvent = StripeEventUtility.ParseEvent(await req.ReadAsStringAsync());
+
+            var keyvault = new KeyVaultClient(new KeyVaultClient.AuthenticationCallback(new AzureServiceTokenProvider().KeyVaultTokenCallback));
+            _fortnoxAccessToken = (await keyvault.GetSecretAsync(VaultUrl, "fortnox-access-token-test")).Value;
+            _fortnoxClientSecret = (await keyvault.GetSecretAsync(VaultUrl, "fortnox-client-secret-test")).Value;
+
 
             log.LogInformation($"Received stripe event of type: {stripeEvent.Type}");
 
@@ -54,7 +66,7 @@ namespace StripeGatewayFunction
                 var result = await CreateFortnoxHttpClient().PostAsJsonAsync("https://api.fortnox.se/3/customers/", customer);
                 if (!result.IsSuccessStatusCode)
                 {
-                    log.LogInformation(await result.Content.ReadAsStringAsync());                    
+                    log.LogInformation(await result.Content.ReadAsStringAsync());
                 }
             }
             else if (stripeEvent.Type == StripeEvents.ChargeSucceeded)
@@ -67,12 +79,15 @@ namespace StripeGatewayFunction
         }
 
 
+        /// <summary>
+        /// Create an authenticated http client for fortnox
+        /// </summary>
+        /// <returns></returns>
         public static HttpClient CreateFortnoxHttpClient()
-        {
-            // todo move production to keyvault
+        {            
             var client = new HttpClient();
-            client.DefaultRequestHeaders.Add("Access-Token", Environment.GetEnvironmentVariable("fortnox:access_token"));
-            client.DefaultRequestHeaders.Add("Client-Secret", Environment.GetEnvironmentVariable("fortnox:client_secret"));
+            client.DefaultRequestHeaders.Add("Access-Token", _fortnoxAccessToken);
+            client.DefaultRequestHeaders.Add("Client-Secret", _fortnoxClientSecret);
             client.DefaultRequestHeaders.Add("Accept", "application/json");
             return client;
         }
