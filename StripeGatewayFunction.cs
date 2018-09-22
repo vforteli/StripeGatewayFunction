@@ -35,9 +35,9 @@ namespace StripeGatewayFunction
                 await HandleCustomerCreatedAsync(stripeEvent);
 
             }
-            else if (stripeEvent.Type == StripeEvents.ChargeSucceeded)
+            else if (stripeEvent.Type == StripeEvents.InvoiceCreated)
             {
-                await HandleChargeSucceededAsync(stripeEvent);
+                await HandleInvoiceCreatedAsync(stripeEvent);
             }
 
 
@@ -52,7 +52,7 @@ namespace StripeGatewayFunction
         /// <returns></returns>
         public async static Task LoadSettingsAsync(Boolean production)
         {
-            var keyvault = new KeyVaultClient(new KeyVaultClient.AuthenticationCallback(new AzureServiceTokenProvider().KeyVaultTokenCallback));            
+            var keyvault = new KeyVaultClient(new KeyVaultClient.AuthenticationCallback(new AzureServiceTokenProvider().KeyVaultTokenCallback));
             if (production)
             {
                 _fortnoxAccessToken = (await keyvault.GetSecretAsync(VaultUrl, "fortnox-access-token-prod")).Value;
@@ -114,9 +114,10 @@ namespace StripeGatewayFunction
         /// </summary>
         /// <param name="stripeEvent"></param>
         /// <returns></returns>
-        public async static Task HandleChargeSucceededAsync(StripeEvent stripeEvent)
+        public async static Task HandleInvoiceCreatedAsync(StripeEvent stripeEvent)
         {
-
+            var invoice = Mapper<StripeInvoice>.MapFromJson((String)stripeEvent.Data.Object.ToString());
+            _log.LogInformation($"Charge from customer {invoice.Id} {invoice.Billing}");
         }
 
 
