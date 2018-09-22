@@ -5,8 +5,10 @@ using Microsoft.Azure.Services.AppAuthentication;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 using Stripe;
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
 
@@ -15,6 +17,7 @@ namespace StripeGatewayFunction
     public static class StripeGatewayFunction
     {
         private const String VaultUrl = "https://flexinetsbilling.vault.azure.net/";
+        private const String ArticleNumber = "4501";
         private static String _fortnoxAccessToken;
         private static String _fortnoxClientSecret;
         private static ILogger _log;
@@ -96,6 +99,7 @@ namespace StripeGatewayFunction
                     VATNumber = stripeCustomer.TaxInfo?.TaxId,
                     DefaultDeliveryTypes = new
                     {
+                        Order = "EMAIL",
                         Invoice = "EMAIL"
                     }
                 }
@@ -117,7 +121,45 @@ namespace StripeGatewayFunction
         public async static Task HandleInvoiceCreatedAsync(StripeEvent stripeEvent)
         {
             var invoice = Mapper<StripeInvoice>.MapFromJson((String)stripeEvent.Data.Object.ToString());
-            _log.LogInformation($"Charge from customer {invoice.Id} {invoice.Billing}");
+            _log.LogInformation($"Invoice created with ID {invoice.Id}, type: {invoice.Billing}");
+
+            var creditCardEmailInformation = new
+            {
+                EmailAddressFrom = "finance@flexinets.se",
+                EmailAddressBCC = "finance@flexinets.se",
+                EmailSubject = "Flexinets Invoice/Order Receipt {no}",
+                EmailBody = "Dear Flexinets user,<br />This email contains the credit card receipt for your prepaid subscription. No action required.<br /><br />Best regards<br />Flexinets<br />www.flexinets.eu"
+            };
+
+            var order = new
+            {
+                CustomerNumber = invoice.CustomerId,
+                Language = "EN",
+                OrderRows = new List<dynamic>(),
+                ExternalInvoiceReference1 = invoice.Id,
+                Remarks = invoice.Billing == StripeBilling.ChargeAutomatically ? "Don't pay this invoice!\n\nYou have prepaid by credit/debit card." : "",
+                EmailInformation = invoice.Billing == StripeBilling.ChargeAutomatically ? creditCardEmailInformation : null // todo this doesnt work...
+            };
+
+            invoice.StripeInvoiceLineItems.Data.ForEach(line =>
+            {
+                order.OrderRows.Add(new
+                {
+                    Description = line.Description.Replace("×", "x"),   // thats not an x, this is an x
+                    ArticleNumber = ArticleNumber,
+                    Price = line.Amount / 100m,
+                    OrderedQuantity = line.Quantity,
+                    DeliveredQuantity = line.Quantity,
+                    VAT = invoice.TaxPercent.HasValue ? Convert.ToInt32(invoice.TaxPercent.Value) : 0
+                });
+            });
+
+            var result = await CreateFortnoxHttpClient().PostAsJsonAsync("https://api.fortnox.se/3/orders/", new { Order = order });
+            if (!result.IsSuccessStatusCode)
+            {
+                _log.LogError(await result.Content.ReadAsStringAsync());
+                _log.LogError(JsonConvert.SerializeObject(order));
+            }
         }
 
 
