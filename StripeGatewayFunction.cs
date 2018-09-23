@@ -123,13 +123,9 @@ namespace StripeGatewayFunction
             var invoice = Mapper<StripeInvoice>.MapFromJson((String)stripeEvent.Data.Object.ToString());
             _log.LogInformation($"Invoice created with ID {invoice.Id}, type: {invoice.Billing}");
 
-            var creditCardEmailInformation = new
-            {
-                EmailAddressFrom = "finance@flexinets.se",
-                EmailAddressBCC = "finance@flexinets.se",
-                EmailSubject = "Flexinets Invoice/Order Receipt {no}",
-                EmailBody = "Dear Flexinets user,<br />This email contains the credit card receipt for your prepaid subscription. No action required.<br /><br />Best regards<br />Flexinets<br />www.flexinets.eu"
-            };
+            var emailBody = invoice.Billing == StripeBilling.ChargeAutomatically
+                ? "Dear Flexinets user,<br />This email contains the credit card receipt for your prepaid subscription. No action required.<br /><br />Best regards<br />Flexinets<br />www.flexinets.eu"
+                : "hitta på text för fakturan";
 
             var order = new
             {
@@ -138,7 +134,13 @@ namespace StripeGatewayFunction
                 OrderRows = new List<dynamic>(),
                 ExternalInvoiceReference1 = invoice.Id,
                 Remarks = invoice.Billing == StripeBilling.ChargeAutomatically ? "Don't pay this invoice!\n\nYou have prepaid by credit/debit card." : "",
-                EmailInformation = invoice.Billing == StripeBilling.ChargeAutomatically ? creditCardEmailInformation : null // todo this doesnt work...
+                EmailInformation = new
+                {
+                    EmailAddressFrom = "finance@flexinets.se",
+                    EmailAddressBCC = "finance@flexinets.se",
+                    EmailSubject = "Flexinets Invoice/Order Receipt {no}",
+                    EmailBody = emailBody
+                }
             };
 
             invoice.StripeInvoiceLineItems.Data.ForEach(line =>
