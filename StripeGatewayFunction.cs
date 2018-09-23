@@ -11,6 +11,7 @@ using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
+using System.Linq;
 
 namespace StripeGatewayFunction
 {
@@ -123,15 +124,10 @@ namespace StripeGatewayFunction
             var invoice = Mapper<StripeInvoice>.MapFromJson((String)stripeEvent.Data.Object.ToString());
             _log.LogInformation($"Invoice created with ID {invoice.Id}, type: {invoice.Billing}");
 
-            var emailBody = invoice.Billing == StripeBilling.ChargeAutomatically
-                ? "Dear Flexinets user,<br />This email contains the credit card receipt for your prepaid subscription. No action required.<br /><br />Best regards<br />Flexinets<br />www.flexinets.eu"
-                : "hitta på text för fakturan";
-
             var order = new
             {
                 CustomerNumber = invoice.CustomerId,
                 Language = "EN",
-                OrderRows = new List<dynamic>(),
                 ExternalInvoiceReference1 = invoice.Id,
                 Remarks = invoice.Billing == StripeBilling.ChargeAutomatically ? "Don't pay this invoice!\n\nYou have prepaid by credit/debit card." : "",
                 EmailInformation = new
@@ -139,13 +135,11 @@ namespace StripeGatewayFunction
                     EmailAddressFrom = "finance@flexinets.se",
                     EmailAddressBCC = "finance@flexinets.se",
                     EmailSubject = "Flexinets Invoice/Order Receipt {no}",
-                    EmailBody = emailBody
-                }
-            };
-
-            invoice.StripeInvoiceLineItems.Data.ForEach(line =>
-            {
-                order.OrderRows.Add(new
+                    EmailBody = invoice.Billing == StripeBilling.ChargeAutomatically
+                        ? "Dear Flexinets user,<br />This email contains the credit card receipt for your prepaid subscription. No action required.<br /><br />Best regards<br />Flexinets<br />www.flexinets.eu"
+                        : "hitta på text för fakturan"
+                },
+                OrderRows = invoice.StripeInvoiceLineItems.Data.Select(line => new
                 {
                     Description = line.Description.Replace("×", "x"),   // thats not an x, this is an x
                     ArticleNumber = ArticleNumber,
@@ -153,8 +147,8 @@ namespace StripeGatewayFunction
                     OrderedQuantity = line.Quantity,
                     DeliveredQuantity = line.Quantity,
                     VAT = invoice.TaxPercent.HasValue ? Convert.ToInt32(invoice.TaxPercent.Value) : 0
-                });
-            });
+                })
+            };
 
             var result = await CreateFortnoxHttpClient().PostAsJsonAsync("https://api.fortnox.se/3/orders/", new { Order = order });
             if (!result.IsSuccessStatusCode)
