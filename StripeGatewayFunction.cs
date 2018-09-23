@@ -8,10 +8,9 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Stripe;
 using System;
-using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
-using System.Linq;
 
 namespace StripeGatewayFunction
 {
@@ -79,6 +78,14 @@ namespace StripeGatewayFunction
         {
             var stripeCustomer = Mapper<StripeCustomer>.MapFromJson((String)stripeEvent.Data.Object.ToString());
 
+            var vatType = "EXPORT";
+            if (stripeCustomer.Shipping.Address.Country.Equals("SE", StringComparison.InvariantCultureIgnoreCase))
+            {
+                vatType = "SEVAT";
+            }
+            // todo hmm EUVAT?
+
+
             var customer = new
             {
                 Customer = new
@@ -96,7 +103,7 @@ namespace StripeGatewayFunction
                     ZipCode = stripeCustomer.Shipping.Address.PostalCode,
                     OurReference = "web",
                     TermsOfPayment = "K",
-                    VATType = "EXPORT",
+                    VATType = vatType,
                     VATNumber = stripeCustomer.TaxInfo?.TaxId,
                     DefaultDeliveryTypes = new
                     {
@@ -110,6 +117,7 @@ namespace StripeGatewayFunction
             if (!result.IsSuccessStatusCode)
             {
                 _log.LogError(await result.Content.ReadAsStringAsync());
+                _log.LogError(JsonConvert.SerializeObject(customer));
             }
         }
 
