@@ -85,6 +85,11 @@ namespace StripeGatewayFunction
             }
             // todo hmm EUVAT?
 
+            var companyName = stripeCustomer.Shipping.Name;
+            if (stripeCustomer.Metadata.ContainsKey("CompanyName") && !String.IsNullOrEmpty(stripeCustomer.Metadata["CompanyName"]))
+            {
+                companyName = stripeCustomer.Metadata["CompanyName"];
+            }
 
             var customer = new
             {
@@ -96,8 +101,8 @@ namespace StripeGatewayFunction
                     Currency = "EUR",
                     CustomerNumber = stripeCustomer.Id,
                     Email = stripeCustomer.Email,
-                    EmailInvoice = stripeCustomer.Email,                    
-                    Name = stripeCustomer.Shipping.Name,
+                    EmailInvoice = stripeCustomer.Email,
+                    Name = companyName,
                     YourReference = stripeCustomer.Shipping.Name,
                     ZipCode = stripeCustomer.Shipping.Address.PostalCode,
                     OurReference = "web",
@@ -139,8 +144,8 @@ namespace StripeGatewayFunction
                 Remarks = invoice.Billing == StripeBilling.ChargeAutomatically ? "Don't pay this invoice!\n\nYou have prepaid by credit/debit card." : "",
                 EmailInformation = new
                 {
-                    EmailAddressFrom = "finance@flexinets.se",
-                    EmailAddressBCC = "finance@flexinets.se",
+                    EmailAddressFrom = "finance@flexinets.eu",
+                    EmailAddressBCC = "finance@flexinets.eu",
                     EmailSubject = "Flexinets Invoice/Order Receipt {no}",
                     EmailBody = invoice.Billing == StripeBilling.ChargeAutomatically
                         ? "Dear Flexinets user,<br />This email contains the credit card receipt for your prepaid subscription. No action required.<br /><br />Best regards<br />Flexinets<br />www.flexinets.eu"
