@@ -152,16 +152,18 @@ namespace StripeGatewayFunction
                     EmailSubject = "Flexinets Invoice/Order Receipt {no}",
                     EmailBody = invoice.Billing == StripeBilling.ChargeAutomatically
                         ? "Dear Flexinets user,<br />This email contains the credit card receipt for your prepaid subscription. No action required.<br /><br />Best regards<br />Flexinets<br />www.flexinets.eu"
-                        : "hitta på text för fakturan"
+                        : "hitta pï¿½ text fï¿½r fakturan"
                 },
                 OrderRows = invoice.StripeInvoiceLineItems.Data.Select(line => new
                 {
-                    Description = line.Description.Replace("×", "x"),   // thats not an x, this is an x
+                    Description = line.Description.Replace("ï¿½", "x"),   // thats not an x, this is an x
                     ArticleNumber = ArticleNumber,
                     Price = line.Amount / 100m,
                     OrderedQuantity = line.Quantity,
                     DeliveredQuantity = line.Quantity,
-                    VAT = invoice.TaxPercent.HasValue ? Convert.ToInt32(invoice.TaxPercent.Value) : 0
+                    VAT = invoice.TaxPercent.HasValue ? Convert.ToInt32(invoice.TaxPercent.Value) : 0,
+                    Discount = invoice.StripeDiscount.StripeCoupon.PercentOff.HasValue ? invoice.StripeDiscount.StripeCoupon.PercentOff.Value : 0,
+                    DiscountType = "PERCENT"
                 })
             };
 
