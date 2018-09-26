@@ -86,9 +86,11 @@ namespace StripeGatewayFunction
             // todo hmm EUVAT?
 
             var companyName = stripeCustomer.Shipping.Name;
+            var type = "PRIVATE";
             if (stripeCustomer.Metadata.ContainsKey("CompanyName") && !String.IsNullOrEmpty(stripeCustomer.Metadata["CompanyName"]))
             {
                 companyName = stripeCustomer.Metadata["CompanyName"];
+                type = "COMPANY";
             }
 
             var customer = new
@@ -109,6 +111,7 @@ namespace StripeGatewayFunction
                     TermsOfPayment = "K",
                     VATType = vatType,
                     VATNumber = stripeCustomer.TaxInfo?.TaxId,
+                    Type = type,
                     DefaultDeliveryTypes = new
                     {
                         Order = "EMAIL",
