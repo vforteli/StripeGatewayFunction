@@ -146,6 +146,7 @@ namespace StripeGatewayFunction
                 Language = "EN",
                 ExternalInvoiceReference1 = invoice.Id,
                 Remarks = invoice.Billing == StripeBilling.ChargeAutomatically ? "Don't pay this invoice!\n\nYou have prepaid by credit/debit card." : "",
+                CopyRemarks = true,
                 EmailInformation = new
                 {
                     EmailAddressFrom = "finance@flexinets.eu",
@@ -158,7 +159,7 @@ namespace StripeGatewayFunction
                 OrderRows = invoice.StripeInvoiceLineItems.Data.Select(line => new
                 {
                     Description = line.Description.Replace("×", "x"),   // thats not an x, this is an x
-                    AccountNumber = (Int32?)null,
+                    AccountNumber = "",
                     ArticleNumber = ArticleNumber,
                     Price = line.Amount / 100m,
                     OrderedQuantity = line.Quantity.GetValueOrDefault(0),
@@ -173,8 +174,8 @@ namespace StripeGatewayFunction
             {
                 order.OrderRows.Add(new
                 {
-                    Description = $"Promo code {invoice.StripeDiscount.StripeCoupon.Id} applied: {invoice.StripeDiscount.StripeCoupon.Name}]",
-                    AccountNumber = (Int32?)0,
+                    Description = $"Promo code {invoice.StripeDiscount.StripeCoupon.Id} applied: {invoice.StripeDiscount.StripeCoupon.Name}",
+                    AccountNumber = "0",
                     ArticleNumber = "",
                     Price = 0m,
                     OrderedQuantity = 0,
@@ -184,7 +185,20 @@ namespace StripeGatewayFunction
                     DiscountType = ""
                 });
             }
-          
+
+            order.OrderRows.Add(new
+            {
+                Description = $"Order date {invoice.Date.Value.ToUniversalTime():yyyy-MM-dd HH:mm:ss}",
+                AccountNumber = "0",
+                ArticleNumber = "",
+                Price = 0m,
+                OrderedQuantity = 0,
+                DeliveredQuantity = 0,
+                VAT = 0,
+                Discount = 0m,
+                DiscountType = ""
+            });
+
 
             var result = await CreateFortnoxHttpClient().PostAsJsonAsync("https://api.fortnox.se/3/orders/", new { Order = order });
             if (!result.IsSuccessStatusCode)
