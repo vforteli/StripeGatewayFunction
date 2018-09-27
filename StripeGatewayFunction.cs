@@ -158,15 +158,33 @@ namespace StripeGatewayFunction
                 OrderRows = invoice.StripeInvoiceLineItems.Data.Select(line => new
                 {
                     Description = line.Description.Replace("×", "x"),   // thats not an x, this is an x
+                    AccountNumber = (Int32?)null,
                     ArticleNumber = ArticleNumber,
                     Price = line.Amount / 100m,
-                    OrderedQuantity = line.Quantity,
-                    DeliveredQuantity = line.Quantity,
+                    OrderedQuantity = line.Quantity.GetValueOrDefault(0),
+                    DeliveredQuantity = line.Quantity.GetValueOrDefault(0),
                     VAT = invoice.TaxPercent.HasValue ? Convert.ToInt32(invoice.TaxPercent.Value) : 0,
                     Discount = invoice.StripeDiscount?.StripeCoupon?.PercentOff != null ? invoice.StripeDiscount.StripeCoupon.PercentOff.Value : 0,
                     DiscountType = "PERCENT"
-                })
+                }).ToList()
             };
+
+            if (invoice.StripeDiscount?.StripeCoupon?.PercentOff != null)
+            {
+                order.OrderRows.Add(new
+                {
+                    Description = $"Promo code {invoice.StripeDiscount.StripeCoupon.Id} applied: {invoice.StripeDiscount.StripeCoupon.Name}]",
+                    AccountNumber = (Int32?)0,
+                    ArticleNumber = "",
+                    Price = 0m,
+                    OrderedQuantity = 0,
+                    DeliveredQuantity = 0,
+                    VAT = 0,
+                    Discount = 0m,
+                    DiscountType = ""
+                });
+            }
+          
 
             var result = await CreateFortnoxHttpClient().PostAsJsonAsync("https://api.fortnox.se/3/orders/", new { Order = order });
             if (!result.IsSuccessStatusCode)
