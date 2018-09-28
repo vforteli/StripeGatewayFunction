@@ -67,6 +67,7 @@ namespace StripeGatewayFunction
                     VATType = vatType,
                     VATNumber = stripeCustomer.TaxInfo?.TaxId,
                     Type = type,
+                    InvoiceRemark = String.IsNullOrEmpty(stripeCustomer.DefaultSourceId) ? "" : "Don't pay this invoice!\n\nYou have prepaid by credit/debit card.",
                     DefaultDeliveryTypes = new
                     {
                         Order = "EMAIL",

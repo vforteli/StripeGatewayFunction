@@ -29,25 +29,19 @@ namespace StripeGatewayFunction
                 var fortnoxClient = new FortnoxClient(accessToken, clientSecret, log);
 
                 var response = await HandleStripeEvent(stripeEvent, fortnoxClient);
-                if (response != null)
+
+                if (response.IsSuccessStatusCode)
                 {
-                    if (response.IsSuccessStatusCode)
-                    {
-                        return new OkObjectResult(await response.Content.ReadAsStringAsync());
-                    }
-                    else
-                    {
-                        return new BadRequestObjectResult(await response.Content.ReadAsStringAsync());
-                    }
+                    return new OkObjectResult(await response.Content.ReadAsStringAsync());
                 }
+
+                return new BadRequestObjectResult(await response.Content.ReadAsStringAsync());
             }
             catch (Exception ex)
             {
-                log.LogError(ex, $"Something went wrong ({ex.Message})"); // wtf is the exception not logged?
+                log.LogError(ex, $"Something went wrong ({ex.Message})"); // whytf is the exception not logged?
                 return new BadRequestObjectResult(ex.Message);
             }
-
-            return new BadRequestObjectResult("Unknown unknown?");
         }
 
 
@@ -60,10 +54,10 @@ namespace StripeGatewayFunction
             }
             else if (stripeEvent.Type == StripeEvents.InvoiceCreated)
             {
-                await fortnoxClient.HandleInvoiceCreatedAsync(stripeEvent);
+                return await fortnoxClient.HandleInvoiceCreatedAsync(stripeEvent);
             }
 
-            return null;
+            throw new NotImplementedException($"No handler for {stripeEvent.Type}");
         }
 
 
