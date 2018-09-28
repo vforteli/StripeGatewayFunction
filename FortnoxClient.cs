@@ -2,11 +2,9 @@
 using Newtonsoft.Json;
 using Stripe;
 using System;
-using System.Collections.Generic;
-using System.Net.Http;
-using System.Text;
-using System.Threading.Tasks;
 using System.Linq;
+using System.Net.Http;
+using System.Threading.Tasks;
 
 namespace StripeGatewayFunction
 {
@@ -22,6 +20,7 @@ namespace StripeGatewayFunction
         {
             _accessToken = accessToken;
             _clientSecret = clientSecret;
+            _log = logger;
         }
 
 
@@ -30,7 +29,7 @@ namespace StripeGatewayFunction
         /// </summary>
         /// <param name="stripeEvent"></param>
         /// <returns></returns>
-        public async Task HandleCustomerCreatedAsync(StripeEvent stripeEvent)
+        public async Task<HttpResponseMessage> HandleCustomerCreatedAsync(StripeEvent stripeEvent)
         {
             var stripeCustomer = Mapper<StripeCustomer>.MapFromJson((String)stripeEvent.Data.Object.ToString());
 
@@ -82,7 +81,8 @@ namespace StripeGatewayFunction
                 _log.LogError(await result.Content.ReadAsStringAsync());
                 _log.LogError(JsonConvert.SerializeObject(customer));
             }
-            result.EnsureSuccessStatusCode();
+
+            return result;
         }
 
 
@@ -91,7 +91,7 @@ namespace StripeGatewayFunction
         /// </summary>
         /// <param name="stripeEvent"></param>
         /// <returns></returns>
-        public async Task HandleInvoiceCreatedAsync(StripeEvent stripeEvent)
+        public async Task<HttpResponseMessage> HandleInvoiceCreatedAsync(StripeEvent stripeEvent)
         {
             // todo refactor
             var invoice = Mapper<StripeInvoice>.MapFromJson((String)stripeEvent.Data.Object.ToString());
@@ -169,7 +169,7 @@ namespace StripeGatewayFunction
                 _log.LogError(await result.Content.ReadAsStringAsync());
                 _log.LogError(JsonConvert.SerializeObject(order));
             }
-            result.EnsureSuccessStatusCode();
+            return result;
         }
 
 

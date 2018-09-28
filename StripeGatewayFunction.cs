@@ -7,6 +7,7 @@ using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using Stripe;
 using System;
+using System.Net.Http;
 using System.Threading.Tasks;
 
 namespace StripeGatewayFunction
@@ -19,15 +20,42 @@ namespace StripeGatewayFunction
         [FunctionName("StripeGateway")]
         public async static Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "post", Route = null)]HttpRequest req, ILogger log)
         {
-            var stripeEvent = StripeEventUtility.ParseEvent(await req.ReadAsStringAsync());
-            log.LogInformation($"Received stripe event of type: {stripeEvent.Type}");
+            try
+            {
+                var stripeEvent = StripeEventUtility.ParseEvent(await req.ReadAsStringAsync());
+                log.LogInformation($"Received stripe event of type: {stripeEvent.Type}");
 
-            var (accessToken, clientSecret) = await LoadSettingsAsync(stripeEvent.LiveMode);  // todo this is maybe not always the case... but good enough for now
-            var fortnoxClient = new FortnoxClient(accessToken, clientSecret, log);
+                var (accessToken, clientSecret) = await LoadSettingsAsync(stripeEvent.LiveMode);
+                var fortnoxClient = new FortnoxClient(accessToken, clientSecret, log);
 
+                var response = await HandleStripeEvent(stripeEvent, fortnoxClient);
+                if (response != null)
+                {
+                    if (response.IsSuccessStatusCode)
+                    {
+                        return new OkObjectResult(await response.Content.ReadAsStringAsync());
+                    }
+                    else
+                    {
+                        return new BadRequestObjectResult(await response.Content.ReadAsStringAsync());
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, $"Something went wrong ({ex.Message})"); // wtf is the exception not logged?
+                return new BadRequestObjectResult(ex.Message);
+            }
+
+            return new BadRequestObjectResult("Unknown unknown?");
+        }
+
+
+        public async static Task<HttpResponseMessage> HandleStripeEvent(StripeEvent stripeEvent, FortnoxClient fortnoxClient)
+        {
             if (stripeEvent.Type == StripeEvents.CustomerCreated)
             {
-                await fortnoxClient.HandleCustomerCreatedAsync(stripeEvent);
+                return await fortnoxClient.HandleCustomerCreatedAsync(stripeEvent);
 
             }
             else if (stripeEvent.Type == StripeEvents.InvoiceCreated)
@@ -35,8 +63,7 @@ namespace StripeGatewayFunction
                 await fortnoxClient.HandleInvoiceCreatedAsync(stripeEvent);
             }
 
-
-            return new OkResult();
+            return null;
         }
 
 
