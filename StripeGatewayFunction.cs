@@ -188,7 +188,7 @@ namespace StripeGatewayFunction
 
             order.OrderRows.Add(new
             {
-                Description = $"Order date {invoice.Date.Value.ToUniversalTime():yyyy-MM-dd HH:mm:ss}",
+                Description = $"Order date {invoice.Date.Value.ToUniversalTime():yyyy-MM-dd HH:mm:ss} UTC",
                 AccountNumber = "0",
                 ArticleNumber = "",
                 Price = 0m,
