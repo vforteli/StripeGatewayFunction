@@ -49,12 +49,12 @@ namespace StripeGatewayFunction
         {
             if (stripeEvent.Type == StripeEvents.CustomerCreated)
             {
-                return await fortnoxClient.HandleCustomerCreatedAsync(stripeEvent);
+                return await fortnoxClient.HandleCustomerCreatedAsync(Mapper<StripeCustomer>.MapFromJson((String)stripeEvent.Data.Object.ToString()));
 
             }
             else if (stripeEvent.Type == StripeEvents.InvoiceCreated)
             {
-                return await fortnoxClient.HandleInvoiceCreatedAsync(stripeEvent);
+                return await fortnoxClient.HandleInvoiceCreatedAsync(Mapper<StripeInvoice>.MapFromJson((String)stripeEvent.Data.Object.ToString()));
             }
 
             throw new NotImplementedException($"No handler for {stripeEvent.Type}");

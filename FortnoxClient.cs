@@ -29,10 +29,8 @@ namespace StripeGatewayFunction
         /// </summary>
         /// <param name="stripeEvent"></param>
         /// <returns></returns>
-        public async Task<HttpResponseMessage> HandleCustomerCreatedAsync(StripeEvent stripeEvent)
+        public async Task<HttpResponseMessage> HandleCustomerCreatedAsync(StripeCustomer stripeCustomer)
         {
-            var stripeCustomer = Mapper<StripeCustomer>.MapFromJson((String)stripeEvent.Data.Object.ToString());
-
             var vatType = "EXPORT";
             if (stripeCustomer.Shipping.Address.Country.Equals("SE", StringComparison.InvariantCultureIgnoreCase))
             {
@@ -92,10 +90,8 @@ namespace StripeGatewayFunction
         /// </summary>
         /// <param name="stripeEvent"></param>
         /// <returns></returns>
-        public async Task<HttpResponseMessage> HandleInvoiceCreatedAsync(StripeEvent stripeEvent)
-        {
-            // todo refactor
-            var invoice = Mapper<StripeInvoice>.MapFromJson((String)stripeEvent.Data.Object.ToString());
+        public async Task<HttpResponseMessage> HandleInvoiceCreatedAsync(StripeInvoice invoice)
+        {                        
             _log.LogInformation($"Invoice created with ID {invoice.Id}, type: {invoice.Billing}");
 
             var customerId = invoice.CustomerId;
