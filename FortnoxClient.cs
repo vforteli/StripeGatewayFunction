@@ -3,6 +3,7 @@ using Newtonsoft.Json;
 using Stripe;
 using System;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 
@@ -91,8 +92,14 @@ namespace StripeGatewayFunction
         /// <param name="stripeEvent"></param>
         /// <returns></returns>
         public async Task<HttpResponseMessage> HandleInvoiceCreatedAsync(StripeInvoice invoice)
-        {                        
+        {
             _log.LogInformation($"Invoice created with ID {invoice.Id}, type: {invoice.Billing}");
+
+            if (await OrderExists(invoice.Id))
+            {
+                _log.LogInformation($"Duplicate request for invoice id {invoice.Id}");
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("Duplicate request ignored") };
+            }
 
             var customerId = invoice.CustomerId;
             if (invoice.Metadata.ContainsKey("FortnoxCustomerId") && !String.IsNullOrEmpty(invoice.Metadata["FortnoxCustomerId"]))
@@ -167,6 +174,20 @@ namespace StripeGatewayFunction
                 _log.LogError(JsonConvert.SerializeObject(order));
             }
             return result;
+        }
+
+
+        /// <summary>
+        /// Check if an order with external id exists in FN.
+        /// Used for making api idempotent
+        /// </summary>
+        /// <param name="stripeInvoiceId"></param>
+        /// <returns></returns>
+        public async Task<Boolean> OrderExists(String stripeInvoiceId)
+        {
+            var result = await CreateFortnoxHttpClient().GetStringAsync($"https://api.fortnox.se/3/orders/?externalinvoicereference1={stripeInvoiceId}");
+            dynamic response = JsonConvert.DeserializeObject(result);
+            return (Int32)response.MetaInformation["@TotalResources"] > 0;
         }
 
 
