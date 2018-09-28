@@ -137,12 +137,19 @@ namespace StripeGatewayFunction
         /// <returns></returns>
         public async static Task HandleInvoiceCreatedAsync(StripeEvent stripeEvent)
         {
+            // todo refactor
             var invoice = Mapper<StripeInvoice>.MapFromJson((String)stripeEvent.Data.Object.ToString());
             _log.LogInformation($"Invoice created with ID {invoice.Id}, type: {invoice.Billing}");
 
+            var customerId = invoice.CustomerId;
+            if (invoice.Metadata.ContainsKey("FortnoxCustomerId") && !String.IsNullOrEmpty(invoice.Metadata["FortnoxCustomerId"]))
+            {
+                customerId = invoice.Metadata["FortnoxCustomerId"];                
+            }
+
             var order = new
             {
-                CustomerNumber = invoice.CustomerId,
+                CustomerNumber = customerId,
                 Language = "EN",
                 ExternalInvoiceReference1 = invoice.Id,
                 Remarks = invoice.Billing == StripeBilling.ChargeAutomatically ? "Don't pay this invoice!\n\nYou have prepaid by credit/debit card." : "",
