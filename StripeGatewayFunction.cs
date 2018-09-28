@@ -5,11 +5,8 @@ using Microsoft.Azure.Services.AppAuthentication;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 using Stripe;
 using System;
-using System.Linq;
-using System.Net.Http;
 using System.Threading.Tasks;
 
 namespace StripeGatewayFunction
@@ -17,30 +14,25 @@ namespace StripeGatewayFunction
     public static class StripeGatewayFunction
     {
         private const String VaultUrl = "https://flexinetsbilling.vault.azure.net/";
-        private const String ArticleNumber = "4501";
-        private static String _fortnoxAccessToken;
-        private static String _fortnoxClientSecret;
-        private static ILogger _log;
 
 
         [FunctionName("StripeGateway")]
         public async static Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "post", Route = null)]HttpRequest req, ILogger log)
         {
-            _log = log;
             var stripeEvent = StripeEventUtility.ParseEvent(await req.ReadAsStringAsync());
             log.LogInformation($"Received stripe event of type: {stripeEvent.Type}");
 
-
-            await LoadSettingsAsync(stripeEvent.LiveMode);  // todo this is maybe not always the case... but good enough for now
+            var (accessToken, clientSecret) = await LoadSettingsAsync(stripeEvent.LiveMode);  // todo this is maybe not always the case... but good enough for now
+            var fortnoxClient = new FortnoxClient(accessToken, clientSecret, log);
 
             if (stripeEvent.Type == StripeEvents.CustomerCreated)
             {
-                await HandleCustomerCreatedAsync(stripeEvent);
+                await fortnoxClient.HandleCustomerCreatedAsync(stripeEvent);
 
             }
             else if (stripeEvent.Type == StripeEvents.InvoiceCreated)
             {
-                await HandleInvoiceCreatedAsync(stripeEvent);
+                await fortnoxClient.HandleInvoiceCreatedAsync(stripeEvent);
             }
 
 
@@ -49,185 +41,25 @@ namespace StripeGatewayFunction
 
 
         /// <summary>
-        /// Much side effect such sad
+        /// Get settings from key vault
         /// </summary>
         /// <param name="production"></param>
         /// <returns></returns>
-        public async static Task LoadSettingsAsync(Boolean production)
+        public async static Task<(String accessToken, String clientSecret)> LoadSettingsAsync(Boolean production)
         {
             var keyvault = new KeyVaultClient(new KeyVaultClient.AuthenticationCallback(new AzureServiceTokenProvider().KeyVaultTokenCallback));
             if (production)
             {
-                _fortnoxAccessToken = (await keyvault.GetSecretAsync(VaultUrl, "fortnox-access-token-prod")).Value;
-                _fortnoxClientSecret = (await keyvault.GetSecretAsync(VaultUrl, "fortnox-client-secret-prod")).Value;
+                return (
+                (await keyvault.GetSecretAsync(VaultUrl, "fortnox-access-token-prod")).Value,
+                (await keyvault.GetSecretAsync(VaultUrl, "fortnox-client-secret-prod")).Value);
             }
             else
             {
-                _fortnoxAccessToken = (await keyvault.GetSecretAsync(VaultUrl, "fortnox-access-token-test")).Value;
-                _fortnoxClientSecret = (await keyvault.GetSecretAsync(VaultUrl, "fortnox-client-secret-test")).Value;
+                return (
+                (await keyvault.GetSecretAsync(VaultUrl, "fortnox-access-token-test")).Value,
+                (await keyvault.GetSecretAsync(VaultUrl, "fortnox-client-secret-test")).Value);
             }
-        }
-
-
-        /// <summary>
-        /// Create customer in fortnox
-        /// </summary>
-        /// <param name="stripeEvent"></param>
-        /// <returns></returns>
-        public async static Task HandleCustomerCreatedAsync(StripeEvent stripeEvent)
-        {
-            var stripeCustomer = Mapper<StripeCustomer>.MapFromJson((String)stripeEvent.Data.Object.ToString());
-
-            var vatType = "EXPORT";
-            if (stripeCustomer.Shipping.Address.Country.Equals("SE", StringComparison.InvariantCultureIgnoreCase))
-            {
-                vatType = "SEVAT";
-            }
-            // todo hmm EUVAT?
-
-            var companyName = stripeCustomer.Shipping.Name;
-            var type = "PRIVATE";
-            if (stripeCustomer.Metadata.ContainsKey("CompanyName") && !String.IsNullOrEmpty(stripeCustomer.Metadata["CompanyName"]))
-            {
-                companyName = stripeCustomer.Metadata["CompanyName"];
-                type = "COMPANY";
-            }
-
-            var customer = new
-            {
-                Customer = new
-                {
-                    Address1 = stripeCustomer.Shipping.Address.Line1,
-                    City = stripeCustomer.Shipping.Address.City,
-                    CountryCode = stripeCustomer.Shipping.Address.Country,
-                    Currency = "EUR",
-                    CustomerNumber = stripeCustomer.Id,
-                    Email = stripeCustomer.Email,
-                    EmailInvoice = stripeCustomer.Email,
-                    Name = companyName,
-                    YourReference = stripeCustomer.Shipping.Name,
-                    ZipCode = stripeCustomer.Shipping.Address.PostalCode,
-                    OurReference = "web",
-                    TermsOfPayment = "K",
-                    VATType = vatType,
-                    VATNumber = stripeCustomer.TaxInfo?.TaxId,
-                    Type = type,
-                    DefaultDeliveryTypes = new
-                    {
-                        Order = "EMAIL",
-                        Invoice = "EMAIL"
-                    }
-                }
-            };
-
-            var result = await CreateFortnoxHttpClient().PostAsJsonAsync("https://api.fortnox.se/3/customers/", customer);
-            if (!result.IsSuccessStatusCode)
-            {
-                _log.LogError(await result.Content.ReadAsStringAsync());
-                _log.LogError(JsonConvert.SerializeObject(customer));
-            }
-            result.EnsureSuccessStatusCode();
-        }
-
-
-        /// <summary>
-        /// Create order in fortnox
-        /// </summary>
-        /// <param name="stripeEvent"></param>
-        /// <returns></returns>
-        public async static Task HandleInvoiceCreatedAsync(StripeEvent stripeEvent)
-        {
-            // todo refactor
-            var invoice = Mapper<StripeInvoice>.MapFromJson((String)stripeEvent.Data.Object.ToString());
-            _log.LogInformation($"Invoice created with ID {invoice.Id}, type: {invoice.Billing}");
-
-            var customerId = invoice.CustomerId;
-            if (invoice.Metadata.ContainsKey("FortnoxCustomerId") && !String.IsNullOrEmpty(invoice.Metadata["FortnoxCustomerId"]))
-            {
-                customerId = invoice.Metadata["FortnoxCustomerId"];                
-            }
-
-            var order = new
-            {
-                CustomerNumber = customerId,
-                Language = "EN",
-                ExternalInvoiceReference1 = invoice.Id,
-                Remarks = invoice.Billing == StripeBilling.ChargeAutomatically ? "Don't pay this invoice!\n\nYou have prepaid by credit/debit card." : "",
-                CopyRemarks = true,
-                EmailInformation = new
-                {
-                    EmailAddressFrom = "finance@flexinets.eu",
-                    EmailAddressBCC = "finance@flexinets.eu",
-                    EmailSubject = "Flexinets Invoice/Order Receipt {no}",
-                    EmailBody = invoice.Billing == StripeBilling.ChargeAutomatically
-                        ? "Dear Flexinets user,<br />This email contains the credit card receipt for your prepaid subscription. No action required.<br /><br />Best regards<br />Flexinets<br />www.flexinets.eu"
-                        : "hitta på text för fakturan"
-                },
-                OrderRows = invoice.StripeInvoiceLineItems.Data.Select(line => new
-                {
-                    Description = line.Description.Replace("×", "x"),   // thats not an x, this is an x
-                    AccountNumber = "",
-                    ArticleNumber = ArticleNumber,
-                    Price = line.Amount / 100m,
-                    OrderedQuantity = line.Quantity.GetValueOrDefault(0),
-                    DeliveredQuantity = line.Quantity.GetValueOrDefault(0),
-                    VAT = invoice.TaxPercent.HasValue ? Convert.ToInt32(invoice.TaxPercent.Value) : 0,
-                    Discount = invoice.StripeDiscount?.StripeCoupon?.PercentOff != null ? invoice.StripeDiscount.StripeCoupon.PercentOff.Value : 0,
-                    DiscountType = "PERCENT"
-                }).ToList()
-            };
-
-            if (invoice.StripeDiscount?.StripeCoupon?.PercentOff != null)
-            {
-                order.OrderRows.Add(new
-                {
-                    Description = $"Promo code {invoice.StripeDiscount.StripeCoupon.Id} applied: {invoice.StripeDiscount.StripeCoupon.Name}",
-                    AccountNumber = "0",
-                    ArticleNumber = "",
-                    Price = 0m,
-                    OrderedQuantity = 0,
-                    DeliveredQuantity = 0,
-                    VAT = 0,
-                    Discount = 0m,
-                    DiscountType = ""
-                });
-            }
-
-            order.OrderRows.Add(new
-            {
-                Description = $"Order date {invoice.Date.Value.ToUniversalTime():yyyy-MM-dd HH:mm:ss} UTC",
-                AccountNumber = "0",
-                ArticleNumber = "",
-                Price = 0m,
-                OrderedQuantity = 0,
-                DeliveredQuantity = 0,
-                VAT = 0,
-                Discount = 0m,
-                DiscountType = ""
-            });
-
-
-            var result = await CreateFortnoxHttpClient().PostAsJsonAsync("https://api.fortnox.se/3/orders/", new { Order = order });
-            if (!result.IsSuccessStatusCode)
-            {
-                _log.LogError(await result.Content.ReadAsStringAsync());
-                _log.LogError(JsonConvert.SerializeObject(order));                
-            }
-            result.EnsureSuccessStatusCode();
-        }
-
-
-        /// <summary>
-        /// Create an authenticated http client for fortnox
-        /// </summary>
-        /// <returns></returns>
-        public static HttpClient CreateFortnoxHttpClient()
-        {
-            var client = new HttpClient();
-            client.DefaultRequestHeaders.Add("Access-Token", _fortnoxAccessToken);
-            client.DefaultRequestHeaders.Add("Client-Secret", _fortnoxClientSecret);
-            client.DefaultRequestHeaders.Add("Accept", "application/json");
-            return client;
         }
     }
 }
