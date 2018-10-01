@@ -101,11 +101,7 @@ namespace StripeGatewayFunction
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("Duplicate request ignored") };
             }
 
-            var customerId = invoice.CustomerId;
-            if (invoice.Metadata.ContainsKey("FortnoxCustomerId") && !String.IsNullOrEmpty(invoice.Metadata["FortnoxCustomerId"]))
-            {
-                customerId = invoice.Metadata["FortnoxCustomerId"];
-            }
+            var customerId = await GetFortnoxCustomerId(invoice.CustomerId);
 
             var order = new
             {
@@ -188,6 +184,32 @@ namespace StripeGatewayFunction
             var result = await CreateFortnoxHttpClient().GetStringAsync($"https://api.fortnox.se/3/orders/?externalinvoicereference1={stripeInvoiceId}");
             dynamic response = JsonConvert.DeserializeObject(result);
             return (Int32)response.MetaInformation["@TotalResources"] > 0;
+        }
+
+
+        /// <summary>
+        /// Gets the real customer id from fortnox in case it doesnt match
+        /// Because of the limitations in Fortnox, the only "reasonable" searchable field to put the external id in is phone number...
+        /// </summary>
+        /// <param name="customerId"></param>
+        /// <returns></returns>
+        public async Task<String> GetFortnoxCustomerId(String customerId)
+        {
+            var client = CreateFortnoxHttpClient();
+            if ((await client.GetAsync($"https://api.fortnox.se/3/customers/{customerId}")).IsSuccessStatusCode)
+            {
+                return customerId;
+            }
+            else
+            {
+                dynamic response = JsonConvert.DeserializeObject(await client.GetStringAsync($"https://api.fortnox.se/3/customers/?phone={customerId}"));                
+                if (response.Customers?.Count == 1)
+                {
+                    return response.Customers[0].CustomerNumber;
+                }                
+            }
+
+            throw new InvalidOperationException($"Customer {customerId} not found by id or external id?!");
         }
 
 
