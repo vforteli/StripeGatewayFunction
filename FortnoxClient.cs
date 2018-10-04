@@ -110,6 +110,7 @@ namespace StripeGatewayFunction
                 ExternalInvoiceReference1 = invoice.Id,
                 Remarks = invoice.Billing == StripeBilling.ChargeAutomatically ? "Don't pay this invoice!\n\nYou have prepaid by credit/debit card." : "",
                 CopyRemarks = true,
+                Currency = invoice.Currency.ToUpperInvariant(),
                 EmailInformation = new
                 {
                     EmailAddressFrom = "finance@flexinets.eu",
